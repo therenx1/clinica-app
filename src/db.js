@@ -2,11 +2,11 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const pool = mysql.createPool({
-  host: 'clinica-db-do-user-35526061-0.e.db.ondigitalocean.com',
-  port: 25060,
-  user: 'doadmin',
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT || 25060,
+  user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: 'clinica_db',
+  database: process.env.DB_NAME,
   ssl: { rejectUnauthorized: false },
   waitForConnections: true,
   connectionLimit: 10

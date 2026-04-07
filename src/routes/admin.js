@@ -33,7 +33,7 @@ router.get('/citas', verificarAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT c.*, 
-        u.nombre AS paciente_nombre, u.apellido AS paciente_apellido,
+        u.dni AS paciente_dni, u.nombre AS paciente_nombre, u.apellido AS paciente_apellido,
         m.nombre AS medico_nombre, m.apellido AS medico_apellido,
         e.nombre AS especialidad
       FROM citas c

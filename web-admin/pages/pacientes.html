@@ -15,6 +15,9 @@
     .main { margin-left: 250px; padding: 32px; }
     .card { border: none; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
     .avatar { width: 40px; height: 40px; border-radius: 50%; background: #6610f2; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; }
+    .doc-tag { font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
+    .doc-tag.dni { background: #e7f1ff; color: #0d6efd; }
+    .doc-tag.ce { background: #fff3e0; color: #e65100; }
   </style>
 </head>
 <body>
@@ -47,14 +50,14 @@
 
     <div class="card p-4">
       <div class="mb-3">
-        <input type="text" id="buscador" class="form-control" placeholder="Buscar por nombre, email o DNI..." oninput="filtrar()">
+        <input type="text" id="buscador" class="form-control" placeholder="Buscar por nombre, email o documento..." oninput="filtrar()">
       </div>
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
             <th>Paciente</th>
             <th>Email</th>
-            <th>DNI</th>
+            <th>Documento</th>
             <th>Teléfono</th>
             <th>Registrado</th>
           </tr>
@@ -77,7 +80,12 @@
 
     function renderPacientes(data) {
       const tbody = document.getElementById('tablaPacientes');
-      tbody.innerHTML = data.map(p => `
+      tbody.innerHTML = data.map(p => {
+        const tipo = (p.tipo_documento || 'DNI').toLowerCase();
+        const docHtml = p.dni
+          ? `<span class="doc-tag ${tipo}">${(p.tipo_documento || 'DNI').toUpperCase()}</span>${p.dni}`
+          : '—';
+        return `
         <tr>
           <td>
             <div class="d-flex align-items-center gap-2">
@@ -86,11 +94,12 @@
             </div>
           </td>
           <td>${p.email}</td>
-          <td>${p.dni || '—'}</td>
+          <td>${docHtml}</td>
           <td>${p.telefono || '—'}</td>
           <td>${new Date(p.created_at).toLocaleDateString('es-PE')}</td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function filtrar() {
@@ -98,7 +107,8 @@
       const filtrados = pacientes.filter(p =>
         `${p.nombre} ${p.apellido}`.toLowerCase().includes(q) ||
         p.email.toLowerCase().includes(q) ||
-        (p.dni && p.dni.includes(q))
+        (p.dni && p.dni.toLowerCase().includes(q)) ||
+        (p.tipo_documento && p.tipo_documento.toLowerCase().includes(q))
       );
       renderPacientes(filtrados);
     }

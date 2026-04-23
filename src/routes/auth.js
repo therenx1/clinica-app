@@ -6,15 +6,35 @@ const pool = require('../db');
 
 router.post('/register', async (req, res) => {
   try {
-    const { nombre, apellido, email, password, telefono, dni } = req.body;
+    const { nombre, apellido, email, password, telefono, dni, tipo_documento = 'DNI' } = req.body;
+
+    if (!nombre || !apellido || !email || !password || !dni) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    if (!['DNI', 'CE'].includes(tipo_documento)) {
+      return res.status(400).json({ error: 'Tipo de documento inválido' });
+    }
+
+    if (tipo_documento === 'DNI' && !/^\d{8}$/.test(dni)) {
+      return res.status(400).json({ error: 'El DNI debe tener exactamente 8 dígitos' });
+    }
+
+    if (tipo_documento === 'CE' && !/^[A-Za-z0-9]{1,12}$/.test(dni)) {
+      return res.status(400).json({ error: 'El CE debe ser alfanumérico de hasta 12 caracteres' });
+    }
+
     const hash = await bcrypt.hash(password, 10);
     const [result] = await pool.query(
-      'INSERT INTO usuarios (nombre, apellido, email, password, telefono, dni) VALUES (?,?,?,?,?,?)',
-      [nombre, apellido, email, hash, telefono, dni]
+      'INSERT INTO usuarios (nombre, apellido, email, password, telefono, dni, tipo_documento) VALUES (?,?,?,?,?,?,?)',
+      [nombre, apellido, email, hash, telefono, dni, tipo_documento]
     );
     res.json({ mensaje: 'Usuario registrado', id: result.insertId });
   } catch (error) {
     console.error(error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'El email o documento ya está registrado' });
+    }
     res.status(500).json({ error: error.message });
   }
 });

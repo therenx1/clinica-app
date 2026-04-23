@@ -32,8 +32,9 @@ router.post('/login', async (req, res) => {
 router.get('/citas', verificarAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT c.*, 
-        u.dni AS paciente_dni, u.nombre AS paciente_nombre, u.apellido AS paciente_apellido,
+      SELECT c.*,
+        u.dni AS paciente_dni, u.tipo_documento AS paciente_tipo_doc,
+        u.nombre AS paciente_nombre, u.apellido AS paciente_apellido,
         m.nombre AS medico_nombre, m.apellido AS medico_apellido,
         e.nombre AS especialidad
       FROM citas c
@@ -51,6 +52,10 @@ router.get('/citas', verificarAdmin, async (req, res) => {
 router.put('/citas/:id', verificarAdmin, async (req, res) => {
   try {
     const { estado } = req.body;
+    const estadosValidos = ['pendiente', 'confirmada', 'completada', 'cancelada'];
+    if (!estadosValidos.includes(estado)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
     await pool.query('UPDATE citas SET estado = ? WHERE id = ?', [estado, req.params.id]);
     res.json({ mensaje: 'Cita actualizada' });
   } catch (error) {
@@ -61,7 +66,7 @@ router.put('/citas/:id', verificarAdmin, async (req, res) => {
 router.get('/pacientes', verificarAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, nombre, apellido, email, telefono, dni, created_at FROM usuarios'
+      'SELECT id, nombre, apellido, email, telefono, dni, tipo_documento, created_at FROM usuarios'
     );
     res.json(rows);
   } catch (error) {

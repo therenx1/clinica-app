@@ -237,7 +237,7 @@ router.post('/medicos/:id/horarios', verificarAdmin, async (req, res) => {
       [req.params.id, dia_semana, hora_inicio, hora_fin]
     );
     if (solapados.length > 0) {
-      return res.status(409).json({ error: 'El horario se solapa con otro existente' });
+      return res.status(409).json({ error: 'El horario se cruza con otro existente' });
     }
 
     const [result] = await pool.query(

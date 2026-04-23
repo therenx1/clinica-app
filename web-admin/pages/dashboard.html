@@ -90,33 +90,48 @@
       </table>
     </div>
   </div>
-
   <script src="../assets/js/api.js"></script>
+  <script src="../assets/js/ui.js"></script>
   <script>
     if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
     document.getElementById('adminNombre').textContent = localStorage.getItem('adminNombre');
-
+  
     async function cargarReportes() {
-      const data = await api.getReportes();
-      document.getElementById('totalCitas').textContent = data.totalCitas;
-      document.getElementById('citasPendientes').textContent = data.citasPendientes;
-      document.getElementById('citasCompletadas').textContent = data.citasCompletadas;
-      document.getElementById('totalPacientes').textContent = data.totalPacientes;
-      const tbody = document.getElementById('tablaEspecialidades');
-      tbody.innerHTML = data.citasPorEspecialidad.map(e => `
-        <tr>
-          <td>${e.especialidad}</td>
-          <td><span class="badge bg-primary">${e.total}</span></td>
-        </tr>
-      `).join('');
+      ['totalCitas','citasPendientes','citasCompletadas','totalPacientes'].forEach(id => {
+        document.getElementById(id).innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
+      });
+      mostrarCargandoTabla('tablaEspecialidades', 2, 'Cargando datos...');
+      try {
+        const data = await api.getReportes();
+        document.getElementById('totalCitas').textContent = data.totalCitas;
+        document.getElementById('citasPendientes').textContent = data.citasPendientes;
+        document.getElementById('citasCompletadas').textContent = data.citasCompletadas;
+        document.getElementById('totalPacientes').textContent = data.totalPacientes;
+        const tbody = document.getElementById('tablaEspecialidades');
+        if (data.citasPorEspecialidad.length === 0) {
+          mostrarVacioTabla('tablaEspecialidades', 2, 'Sin datos de especialidades');
+        } else {
+          tbody.innerHTML = data.citasPorEspecialidad.map(e => `
+            <tr>
+              <td>${e.especialidad}</td>
+              <td><span class="badge bg-primary">${e.total}</span></td>
+            </tr>
+          `).join('');
+        }
+      } catch (error) {
+        mostrarErrorTabla('tablaEspecialidades', 2, error.message, cargarReportes);
+        ['totalCitas','citasPendientes','citasCompletadas','totalPacientes'].forEach(id => {
+          document.getElementById(id).textContent = '—';
+        });
+      }
     }
-
+  
     function logout() {
       localStorage.removeItem('adminToken');
       localStorage.removeItem('adminNombre');
       window.location.href = '../login.html';
     }
-
+  
     cargarReportes();
   </script>
 </body>

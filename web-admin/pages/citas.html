@@ -21,6 +21,7 @@
     .doc-tag { font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
     .doc-tag.dni { background: #e7f1ff; color: #0d6efd; }
     .doc-tag.ce { background: #fff3e0; color: #e65100; }
+    .filtros { background: #f8fafc; border-radius: 12px; padding: 16px; }
   </style>
 </head>
 <body>
@@ -52,9 +53,47 @@
     </div>
 
     <div class="card p-4">
-      <div class="mb-3">
-        <input type="text" id="buscador" class="form-control" placeholder="Buscar por documento del paciente..." oninput="filtrar()">
+      <div class="filtros mb-3">
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold">Documento</label>
+            <input type="text" id="f_documento" class="form-control form-control-sm" placeholder="Buscar por DNI/CE">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Estado</label>
+            <select id="f_estado" class="form-select form-select-sm">
+              <option value="">Todos</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="confirmada">Confirmada</option>
+              <option value="completada">Completada</option>
+              <option value="cancelada">Cancelada</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Desde</label>
+            <input type="date" id="f_fecha_desde" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Hasta</label>
+            <input type="date" id="f_fecha_hasta" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Por página</label>
+            <select id="f_limit" class="form-select form-select-sm">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button class="btn btn-outline-secondary btn-sm w-100" onclick="limpiarFiltros()" title="Limpiar filtros">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
       </div>
+
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
@@ -71,18 +110,49 @@
         </thead>
         <tbody id="tablaCitas"></tbody>
       </table>
+
+      <div id="paginacion"></div>
     </div>
   </div>
 
   <script src="../assets/js/api.js"></script>
+  <script src="../assets/js/ui.js"></script>
   <script>
     if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
 
-    let citas = [];
+    let paginaActual = 1;
+
+    function obtenerFiltros() {
+      return {
+        page: paginaActual,
+        limit: parseInt(document.getElementById('f_limit').value),
+        documento: document.getElementById('f_documento').value.trim(),
+        estado: document.getElementById('f_estado').value,
+        fecha_desde: document.getElementById('f_fecha_desde').value,
+        fecha_hasta: document.getElementById('f_fecha_hasta').value
+      };
+    }
 
     async function cargarCitas() {
-      citas = await api.getCitas();
-      renderCitas(citas);
+      mostrarCargandoTabla('tablaCitas', 9, 'Cargando citas...');
+      try {
+        const { data, pagination } = await api.getCitas(obtenerFiltros());
+        if (data.length === 0) {
+          mostrarVacioTabla('tablaCitas', 9, paginaActual === 1 && !hayFiltrosActivos()
+            ? 'No hay citas registradas'
+            : 'No hay resultados para los filtros aplicados');
+        } else {
+          renderCitas(data);
+        }
+        renderPaginacion('paginacion', pagination, irAPagina);
+      } catch (error) {
+        mostrarErrorTabla('tablaCitas', 9, error.message, cargarCitas);
+      }
+    }
+
+    function hayFiltrosActivos() {
+      const f = obtenerFiltros();
+      return f.documento || f.estado || f.fecha_desde || f.fecha_hasta;
     }
 
     function renderCitas(data) {
@@ -93,41 +163,66 @@
           ? `<span class="doc-tag ${tipo}">${(c.paciente_tipo_doc || 'DNI').toUpperCase()}</span><strong>${c.paciente_dni}</strong>`
           : '<span class="text-muted">Sin documento</span>';
         return `
-        <tr>
-          <td>${c.id}</td>
-          <td>${docHtml}</td>
-          <td>${c.paciente_nombre} ${c.paciente_apellido}</td>
-          <td>Dr. ${c.medico_nombre} ${c.medico_apellido}</td>
-          <td>${c.especialidad}</td>
-          <td>${new Date(c.fecha).toLocaleDateString('es-PE')}</td>
-          <td>${c.hora}</td>
-          <td><span class="badge badge-${c.estado} px-2 py-1 rounded-pill">${c.estado}</span></td>
-          <td>
-            <select class="form-select form-select-sm" style="width:140px" onchange="cambiarEstado(${c.id}, this.value)">
-              <option value="pendiente" ${c.estado==='pendiente'?'selected':''}>Pendiente</option>
-              <option value="confirmada" ${c.estado==='confirmada'?'selected':''}>Confirmada</option>
-              <option value="completada" ${c.estado==='completada'?'selected':''}>Completada</option>
-              <option value="cancelada" ${c.estado==='cancelada'?'selected':''}>Cancelada</option>
-            </select>
-          </td>
-        </tr>
-      `;
+          <tr>
+            <td>${c.id}</td>
+            <td>${docHtml}</td>
+            <td>${c.paciente_nombre} ${c.paciente_apellido}</td>
+            <td>Dr. ${c.medico_nombre} ${c.medico_apellido}</td>
+            <td>${c.especialidad}</td>
+            <td>${new Date(c.fecha).toLocaleDateString('es-PE')}</td>
+            <td>${c.hora}</td>
+            <td><span class="badge badge-${c.estado} px-2 py-1 rounded-pill">${c.estado}</span></td>
+            <td>
+              <select class="form-select form-select-sm" style="width:140px" onchange="cambiarEstado(${c.id}, this.value, this)">
+                <option value="pendiente" ${c.estado==='pendiente'?'selected':''}>Pendiente</option>
+                <option value="confirmada" ${c.estado==='confirmada'?'selected':''}>Confirmada</option>
+                <option value="completada" ${c.estado==='completada'?'selected':''}>Completada</option>
+                <option value="cancelada" ${c.estado==='cancelada'?'selected':''}>Cancelada</option>
+              </select>
+            </td>
+          </tr>
+        `;
       }).join('');
     }
 
-    function filtrar() {
-      const q = document.getElementById('buscador').value.trim().toLowerCase();
-      const filtradas = citas.filter(c =>
-        (c.paciente_dni && c.paciente_dni.toLowerCase().includes(q)) ||
-        (c.paciente_tipo_doc && c.paciente_tipo_doc.toLowerCase().includes(q))
-      );
-      renderCitas(filtradas);
-    }
-
-    async function cambiarEstado(id, estado) {
-      await api.updateCita(id, estado);
+    function irAPagina(nuevaPagina) {
+      paginaActual = nuevaPagina;
       cargarCitas();
     }
+
+    function aplicarFiltros() {
+      paginaActual = 1;
+      cargarCitas();
+    }
+
+    const aplicarFiltrosDebounced = debounce(aplicarFiltros, 400);
+
+    function limpiarFiltros() {
+      document.getElementById('f_documento').value = '';
+      document.getElementById('f_estado').value = '';
+      document.getElementById('f_fecha_desde').value = '';
+      document.getElementById('f_fecha_hasta').value = '';
+      paginaActual = 1;
+      cargarCitas();
+    }
+
+    async function cambiarEstado(id, estado, selectEl) {
+      selectEl.disabled = true;
+      try {
+        await api.updateCita(id, estado);
+        cargarCitas();
+      } catch (error) {
+        mostrarToast('Error al actualizar la cita: ' + error.message);
+        selectEl.disabled = false;
+        cargarCitas();
+      }
+    }
+
+    document.getElementById('f_documento').addEventListener('input', aplicarFiltrosDebounced);
+    document.getElementById('f_estado').addEventListener('change', aplicarFiltros);
+    document.getElementById('f_fecha_desde').addEventListener('change', aplicarFiltros);
+    document.getElementById('f_fecha_hasta').addEventListener('change', aplicarFiltros);
+    document.getElementById('f_limit').addEventListener('change', aplicarFiltros);
 
     function logout() {
       localStorage.removeItem('adminToken');

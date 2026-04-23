@@ -90,14 +90,17 @@
       </div>
     </div>
   </div>
-
   <script src="../assets/js/api.js"></script>
-  <script>
-    if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
+<script src="../assets/js/ui.js"></script>
+<script>
+  if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
 
-    async function cargarReportes() {
+  async function cargarReportes() {
+    ['totalCitas','citasPendientes','citasCompletadas','totalPacientes'].forEach(id => {
+      document.getElementById(id).innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
+    });
+    try {
       const data = await api.getReportes();
-
       document.getElementById('totalCitas').textContent = data.totalCitas;
       document.getElementById('citasPendientes').textContent = data.citasPendientes;
       document.getElementById('citasCompletadas').textContent = data.citasCompletadas;
@@ -131,15 +134,21 @@
         },
         options: { responsive: true }
       });
+    } catch (error) {
+      mostrarToast('No se pudieron cargar los reportes: ' + error.message);
+      ['totalCitas','citasPendientes','citasCompletadas','totalPacientes'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+      });
     }
+  }
 
-    function logout() {
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('adminNombre');
-      window.location.href = '../login.html';
-    }
+  function logout() {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminNombre');
+    window.location.href = '../login.html';
+  }
 
-    cargarReportes();
-  </script>
+  cargarReportes();
+</script>
 </body>
 </html>

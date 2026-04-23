@@ -44,8 +44,57 @@ router.post('/login', async (req, res) => {
 
 router.get('/citas', verificarAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT c.*,
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(5, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+    const { documento, estado, fecha_desde, fecha_hasta, medico_id } = req.query;
+
+    const condiciones = [];
+    const params = [];
+
+    if (documento) {
+      condiciones.push('u.dni LIKE ?');
+      params.push(`%${documento}%`);
+    }
+    if (estado) {
+      const estadosValidos = ['pendiente', 'confirmada', 'completada', 'cancelada'];
+      if (!estadosValidos.includes(estado)) {
+        return res.status(400).json({ error: 'Estado inválido' });
+      }
+      condiciones.push('c.estado = ?');
+      params.push(estado);
+    }
+    if (fecha_desde) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_desde)) {
+        return res.status(400).json({ error: 'fecha_desde debe ser YYYY-MM-DD' });
+      }
+      condiciones.push('c.fecha >= ?');
+      params.push(fecha_desde);
+    }
+    if (fecha_hasta) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_hasta)) {
+        return res.status(400).json({ error: 'fecha_hasta debe ser YYYY-MM-DD' });
+      }
+      condiciones.push('c.fecha <= ?');
+      params.push(fecha_hasta);
+    }
+    if (medico_id) {
+      condiciones.push('c.medico_id = ?');
+      params.push(parseInt(medico_id));
+    }
+
+    const whereClause = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total 
+       FROM citas c 
+       JOIN usuarios u ON c.usuario_id = u.id 
+       ${whereClause}`,
+      params
+    );
+
+    const [rows] = await pool.query(
+      `SELECT c.*,
         u.dni AS paciente_dni, u.tipo_documento AS paciente_tipo_doc,
         u.nombre AS paciente_nombre, u.apellido AS paciente_apellido,
         m.nombre AS medico_nombre, m.apellido AS medico_apellido,
@@ -54,9 +103,21 @@ router.get('/citas', verificarAdmin, async (req, res) => {
       JOIN usuarios u ON c.usuario_id = u.id
       JOIN medicos m ON c.medico_id = m.id
       JOIN especialidades e ON m.especialidad_id = e.id
+      ${whereClause}
       ORDER BY c.fecha DESC, c.hora DESC
-    `);
-    res.json(rows);
+      LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -78,10 +139,52 @@ router.put('/citas/:id', verificarAdmin, async (req, res) => {
 
 router.get('/pacientes', verificarAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      'SELECT id, nombre, apellido, email, telefono, dni, tipo_documento, created_at FROM usuarios'
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(5, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+    const { search, tipo_documento } = req.query;
+
+    const condiciones = [];
+    const params = [];
+
+    if (search) {
+      condiciones.push('(nombre LIKE ? OR apellido LIKE ? OR email LIKE ? OR dni LIKE ?)');
+      const q = `%${search}%`;
+      params.push(q, q, q, q);
+    }
+    if (tipo_documento) {
+      if (!['DNI', 'CE'].includes(tipo_documento)) {
+        return res.status(400).json({ error: 'Tipo de documento inválido' });
+      }
+      condiciones.push('tipo_documento = ?');
+      params.push(tipo_documento);
+    }
+
+    const whereClause = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM usuarios ${whereClause}`,
+      params
     );
-    res.json(rows);
+
+    const [rows] = await pool.query(
+      `SELECT id, nombre, apellido, email, telefono, dni, tipo_documento, created_at 
+       FROM usuarios 
+       ${whereClause} 
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

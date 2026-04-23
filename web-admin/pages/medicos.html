@@ -180,7 +180,7 @@
         </div>
         <div class="modal-footer border-0">
           <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button class="btn btn-primary" onclick="guardarHorario()">Guardar</button>
+          <button class="btn btn-primary" onclick="guardarHorario(event)">Guardar</button>
         </div>
       </div>
     </div>
@@ -205,22 +205,33 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="../assets/js/api.js"></script>
-  <script>
-    if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
+<script src="../assets/js/api.js"></script>
+<script src="../assets/js/ui.js"></script>
+<script>
+  if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
 
-    let especialidades = [];
-    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  let especialidades = [];
+  const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-    async function cargarEspecialidades() {
+  async function cargarEspecialidades() {
+    try {
       especialidades = await api.getEspecialidades();
       const select = document.getElementById('especialidad_id');
       select.innerHTML = especialidades.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+    } catch (error) {
+      mostrarToast('No se pudieron cargar las especialidades: ' + error.message);
     }
+  }
 
-    async function cargarMedicos() {
+  async function cargarMedicos() {
+    mostrarCargandoTabla('tablaMedicos', 7, 'Cargando médicos...');
+    try {
       const incluirInactivos = document.getElementById('mostrarInactivos').checked;
       const medicos = await api.getMedicos(incluirInactivos);
+      if (medicos.length === 0) {
+        mostrarVacioTabla('tablaMedicos', 7, 'No hay médicos registrados');
+        return;
+      }
       const tbody = document.getElementById('tablaMedicos');
       tbody.innerHTML = medicos.map(m => {
         const avatarContent = m.foto_url
@@ -249,7 +260,7 @@
               <button class="btn btn-sm btn-outline-primary btn-icon" onclick="editarMedico(${m.id})" title="Editar">
                 <i class="bi bi-pencil"></i>
               </button>
-              <button class="btn btn-sm ${toggleClass} btn-icon" onclick="toggleEstado(${m.id}, ${!m.activo})" title="${toggleTitle}">
+              <button class="btn btn-sm ${toggleClass} btn-icon" onclick="toggleEstado(${m.id}, ${!m.activo}, this)" title="${toggleTitle}">
                 <i class="bi ${toggleIcon}"></i>
               </button>
               <button class="btn btn-sm btn-outline-danger btn-icon" onclick="eliminarMedico(${m.id}, '${m.nombre} ${m.apellido}')" title="Eliminar">
@@ -266,32 +277,36 @@
                     <i class="bi bi-plus-lg me-1"></i>Agregar horario
                   </button>
                 </div>
-                <div id="horariosLista-${m.id}">
-                  <div class="text-center text-muted py-3">Cargando...</div>
-                </div>
+                <div id="horariosLista-${m.id}"></div>
               </div>
             </td>
           </tr>
         `;
       }).join('');
+    } catch (error) {
+      mostrarErrorTabla('tablaMedicos', 7, error.message, cargarMedicos);
     }
+  }
 
-    async function toggleHorarios(medicoId) {
-      const fila = document.getElementById(`horarios-${medicoId}`);
-      const btn = document.querySelector(`tr[data-medico-id="${medicoId}"] .expand-btn`);
-      if (fila.classList.contains('d-none')) {
-        fila.classList.remove('d-none');
-        btn.classList.add('open');
-        await renderHorarios(medicoId);
-      } else {
-        fila.classList.add('d-none');
-        btn.classList.remove('open');
-      }
+  async function toggleHorarios(medicoId) {
+    const fila = document.getElementById(`horarios-${medicoId}`);
+    const btn = document.querySelector(`tr[data-medico-id="${medicoId}"] .expand-btn`);
+    if (fila.classList.contains('d-none')) {
+      fila.classList.remove('d-none');
+      btn.classList.add('open');
+      await renderHorarios(medicoId);
+    } else {
+      fila.classList.add('d-none');
+      btn.classList.remove('open');
     }
+  }
 
-    async function renderHorarios(medicoId) {
+  async function renderHorarios(medicoId) {
+    const contenedorId = `horariosLista-${medicoId}`;
+    mostrarCargandoContenedor(contenedorId, 'Cargando horarios...');
+    try {
       const horarios = await api.getHorarios(medicoId);
-      const contenedor = document.getElementById(`horariosLista-${medicoId}`);
+      const contenedor = document.getElementById(contenedorId);
       if (horarios.length === 0) {
         contenedor.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-calendar-x me-2"></i>Este médico no tiene horarios configurados</div>';
         return;
@@ -313,88 +328,107 @@
           </div>
         </div>
       `).join('');
+    } catch (error) {
+      document.getElementById(contenedorId).innerHTML =
+        `<div class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-2"></i>${error.message}
+          <button class="btn btn-sm btn-link" onclick="renderHorarios(${medicoId})">Reintentar</button>
+         </div>`;
     }
+  }
 
-    function abrirModalHorario(medicoId) {
-      document.getElementById('modalHorarioTitulo').textContent = 'Nuevo horario';
-      document.getElementById('horarioId').value = '';
-      document.getElementById('horarioMedicoId').value = medicoId;
-      document.getElementById('dia_semana').value = '1';
-      document.getElementById('hora_inicio').value = '08:00';
-      document.getElementById('hora_fin').value = '13:00';
-      document.getElementById('duracion_min').value = '30';
-      document.getElementById('horarioError').classList.add('d-none');
-      new bootstrap.Modal(document.getElementById('modalHorario')).show();
-    }
+  function abrirModalHorario(medicoId) {
+    document.getElementById('modalHorarioTitulo').textContent = 'Nuevo horario';
+    document.getElementById('horarioId').value = '';
+    document.getElementById('horarioMedicoId').value = medicoId;
+    document.getElementById('dia_semana').value = '1';
+    document.getElementById('hora_inicio').value = '08:00';
+    document.getElementById('hora_fin').value = '13:00';
+    document.getElementById('duracion_min').value = '30';
+    document.getElementById('horarioError').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('modalHorario')).show();
+  }
 
-    function editarHorario(horario, medicoId) {
-      document.getElementById('modalHorarioTitulo').textContent = 'Editar horario';
-      document.getElementById('horarioId').value = horario.id;
-      document.getElementById('horarioMedicoId').value = medicoId;
-      document.getElementById('dia_semana').value = horario.dia_semana;
-      document.getElementById('hora_inicio').value = horario.hora_inicio.substring(0,5);
-      document.getElementById('hora_fin').value = horario.hora_fin.substring(0,5);
-      document.getElementById('duracion_min').value = horario.duracion_min;
-      document.getElementById('horarioError').classList.add('d-none');
-      new bootstrap.Modal(document.getElementById('modalHorario')).show();
-    }
+  function editarHorario(horario, medicoId) {
+    document.getElementById('modalHorarioTitulo').textContent = 'Editar horario';
+    document.getElementById('horarioId').value = horario.id;
+    document.getElementById('horarioMedicoId').value = medicoId;
+    document.getElementById('dia_semana').value = horario.dia_semana;
+    document.getElementById('hora_inicio').value = horario.hora_inicio.substring(0,5);
+    document.getElementById('hora_fin').value = horario.hora_fin.substring(0,5);
+    document.getElementById('duracion_min').value = horario.duracion_min;
+    document.getElementById('horarioError').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('modalHorario')).show();
+  }
 
-    async function guardarHorario() {
-      const id = document.getElementById('horarioId').value;
-      const medicoId = document.getElementById('horarioMedicoId').value;
-      const data = {
-        dia_semana: parseInt(document.getElementById('dia_semana').value),
-        hora_inicio: document.getElementById('hora_inicio').value,
-        hora_fin: document.getElementById('hora_fin').value,
-        duracion_min: parseInt(document.getElementById('duracion_min').value)
-      };
-      const errorDiv = document.getElementById('horarioError');
-      const resp = id
-        ? await api.actualizarHorario(id, data)
-        : await api.crearHorario(medicoId, data);
-      if (resp.error) {
-        errorDiv.textContent = resp.error;
-        errorDiv.classList.remove('d-none');
-        return;
-      }
+  async function guardarHorario(evt) {
+    const btn = evt ? evt.currentTarget : document.querySelector('#modalHorario .btn-primary');
+    const id = document.getElementById('horarioId').value;
+    const medicoId = document.getElementById('horarioMedicoId').value;
+    const data = {
+      dia_semana: parseInt(document.getElementById('dia_semana').value),
+      hora_inicio: document.getElementById('hora_inicio').value,
+      hora_fin: document.getElementById('hora_fin').value,
+      duracion_min: parseInt(document.getElementById('duracion_min').value)
+    };
+    const errorDiv = document.getElementById('horarioError');
+    errorDiv.classList.add('d-none');
+    const restaurar = bloquearBoton(btn, 'Guardando...');
+    try {
+      if (id) await api.actualizarHorario(id, data);
+      else await api.crearHorario(medicoId, data);
       bootstrap.Modal.getInstance(document.getElementById('modalHorario')).hide();
       renderHorarios(medicoId);
+    } catch (error) {
+      errorDiv.textContent = error.message;
+      errorDiv.classList.remove('d-none');
+    } finally {
+      restaurar();
     }
+  }
 
-    function confirmarEliminarHorario(id, medicoId) {
-      document.getElementById('confirmarTitulo').textContent = 'Eliminar horario';
-      document.getElementById('confirmarMensaje').innerHTML = '¿Eliminar este horario?<br><small class="text-muted">Las citas ya agendadas en este horario no se verán afectadas.</small>';
-      const btn = document.getElementById('btnConfirmar');
-      const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
-      btn.onclick = async () => {
+  function confirmarEliminarHorario(id, medicoId) {
+    document.getElementById('confirmarTitulo').textContent = 'Eliminar horario';
+    document.getElementById('confirmarMensaje').innerHTML = '¿Eliminar este horario?<br><small class="text-muted">Las citas ya agendadas en este horario no se verán afectadas.</small>';
+    const btn = document.getElementById('btnConfirmar');
+    const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
+    btn.onclick = async () => {
+      const restaurar = bloquearBoton(btn, 'Eliminando...');
+      try {
         await api.eliminarHorario(id);
         modal.hide();
         renderHorarios(medicoId);
-      };
-      modal.show();
-    }
+      } catch (error) {
+        modal.hide();
+        mostrarToast('Error al eliminar: ' + error.message);
+      } finally {
+        restaurar();
+      }
+    };
+    modal.show();
+  }
 
-    function previsualizar(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const preview = document.getElementById('preview');
-      const url = URL.createObjectURL(file);
-      preview.innerHTML = `<img src="${url}" alt="Preview">`;
-    }
+  function previsualizar(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const preview = document.getElementById('preview');
+    const url = URL.createObjectURL(file);
+    preview.innerHTML = `<img src="${url}" alt="Preview">`;
+  }
 
-    function abrirModalNuevo() {
-      document.getElementById('modalTitulo').textContent = 'Nuevo médico';
-      document.getElementById('medicoId').value = '';
-      document.getElementById('nombre').value = '';
-      document.getElementById('apellido').value = '';
-      document.getElementById('email').value = '';
-      document.getElementById('telefono').value = '';
-      document.getElementById('foto').value = '';
-      document.getElementById('preview').innerHTML = '<i class="bi bi-person text-muted fs-1"></i>';
-      new bootstrap.Modal(document.getElementById('modalMedico')).show();
-    }
+  function abrirModalNuevo() {
+    document.getElementById('modalTitulo').textContent = 'Nuevo médico';
+    document.getElementById('medicoId').value = '';
+    document.getElementById('nombre').value = '';
+    document.getElementById('apellido').value = '';
+    document.getElementById('email').value = '';
+    document.getElementById('telefono').value = '';
+    document.getElementById('foto').value = '';
+    document.getElementById('preview').innerHTML = '<i class="bi bi-person text-muted fs-1"></i>';
+    new bootstrap.Modal(document.getElementById('modalMedico')).show();
+  }
 
-    async function editarMedico(id) {
+  async function editarMedico(id) {
+    try {
       const m = await api.getMedico(id);
       document.getElementById('modalTitulo').textContent = 'Editar médico';
       document.getElementById('medicoId').value = m.id;
@@ -409,68 +443,80 @@
         ? `<img src="${m.foto_url}" alt="Foto">`
         : '<i class="bi bi-person text-muted fs-1"></i>';
       new bootstrap.Modal(document.getElementById('modalMedico')).show();
+    } catch (error) {
+      mostrarToast('No se pudo cargar el médico: ' + error.message);
     }
+  }
 
-    async function guardarMedico() {
-      const id = document.getElementById('medicoId').value;
-      const fd = new FormData();
-      fd.append('nombre', document.getElementById('nombre').value);
-      fd.append('apellido', document.getElementById('apellido').value);
-      fd.append('email', document.getElementById('email').value);
-      fd.append('telefono', document.getElementById('telefono').value);
-      fd.append('especialidad_id', document.getElementById('especialidad_id').value);
-      const foto = document.getElementById('foto').files[0];
-      if (foto) fd.append('foto', foto);
+  async function guardarMedico() {
+    const btn = document.getElementById('btnGuardar');
+    const id = document.getElementById('medicoId').value;
+    const fd = new FormData();
+    fd.append('nombre', document.getElementById('nombre').value);
+    fd.append('apellido', document.getElementById('apellido').value);
+    fd.append('email', document.getElementById('email').value);
+    fd.append('telefono', document.getElementById('telefono').value);
+    fd.append('especialidad_id', document.getElementById('especialidad_id').value);
+    const foto = document.getElementById('foto').files[0];
+    if (foto) fd.append('foto', foto);
 
-      document.getElementById('btnGuardarTexto').classList.add('d-none');
-      document.getElementById('btnGuardarSpinner').classList.remove('d-none');
-
-      try {
-        const resp = id ? await api.actualizarMedico(id, fd) : await api.crearMedico(fd);
-        if (resp.error) {
-          alert('Error: ' + resp.error);
-        } else {
-          bootstrap.Modal.getInstance(document.getElementById('modalMedico')).hide();
-          cargarMedicos();
-        }
-      } finally {
-        document.getElementById('btnGuardarTexto').classList.remove('d-none');
-        document.getElementById('btnGuardarSpinner').classList.add('d-none');
-      }
+    const restaurar = bloquearBoton(btn, id ? 'Actualizando...' : 'Guardando...');
+    try {
+      if (id) await api.actualizarMedico(id, fd);
+      else await api.crearMedico(fd);
+      bootstrap.Modal.getInstance(document.getElementById('modalMedico')).hide();
+      cargarMedicos();
+    } catch (error) {
+      mostrarToast('Error: ' + error.message);
+    } finally {
+      restaurar();
     }
+  }
 
-    async function toggleEstado(id, nuevoEstado) {
+  async function toggleEstado(id, nuevoEstado, btn) {
+    const restaurar = bloquearBoton(btn, '');
+    try {
       await api.cambiarEstadoMedico(id, nuevoEstado);
       cargarMedicos();
+    } catch (error) {
+      mostrarToast('Error al cambiar estado: ' + error.message);
+      restaurar();
     }
+  }
 
-    function eliminarMedico(id, nombre) {
-      document.getElementById('confirmarTitulo').textContent = 'Eliminar médico';
-      document.getElementById('confirmarMensaje').innerHTML = `¿Eliminar permanentemente a <strong>Dr. ${nombre}</strong>?<br><small class="text-muted">Esta acción no se puede deshacer. Si el médico tiene citas, se recomienda desactivarlo en lugar de eliminar.</small>`;
-      const btn = document.getElementById('btnConfirmar');
-      const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
-      btn.onclick = async () => {
-        const resp = await api.eliminarMedico(id);
+  function eliminarMedico(id, nombre) {
+    document.getElementById('confirmarTitulo').textContent = 'Eliminar médico';
+    document.getElementById('confirmarMensaje').innerHTML = `¿Eliminar permanentemente a <strong>Dr. ${nombre}</strong>?<br><small class="text-muted">Esta acción no se puede deshacer. Si el médico tiene citas, se recomienda desactivarlo en lugar de eliminar.</small>`;
+    const btn = document.getElementById('btnConfirmar');
+    const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
+    btn.onclick = async () => {
+      const restaurar = bloquearBoton(btn, 'Eliminando...');
+      try {
+        await api.eliminarMedico(id);
         modal.hide();
-        if (resp.tieneCitas) {
-          alert(`No se puede eliminar: tiene ${resp.totalCitas} cita(s) registrada(s). Desactívalo en su lugar.`);
-        } else if (resp.error) {
-          alert('Error: ' + resp.error);
+        cargarMedicos();
+      } catch (error) {
+        modal.hide();
+        if (error.data && error.data.tieneCitas) {
+          mostrarToast(`No se puede eliminar: tiene ${error.data.totalCitas} cita(s) registrada(s). Desactívalo en su lugar.`);
         } else {
-          cargarMedicos();
+          mostrarToast('Error: ' + error.message);
         }
-      };
-      modal.show();
-    }
+      } finally {
+        restaurar();
+      }
+    };
+    modal.show();
+  }
 
-    function logout() {
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('adminNombre');
-      window.location.href = '../login.html';
-    }
+  function logout() {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminNombre');
+    window.location.href = '../login.html';
+  }
 
-    cargarEspecialidades();
-    cargarMedicos();
-  </script>
+  cargarEspecialidades();
+  cargarMedicos();
+</script>
 </body>
 </html>

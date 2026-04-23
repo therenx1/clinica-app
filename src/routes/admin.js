@@ -200,6 +200,99 @@ router.delete('/medicos/:id', verificarAdmin, async (req, res) => {
   }
 });
 
+router.get('/medicos/:id/horarios', verificarAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM horarios WHERE medico_id = ? ORDER BY dia_semana, hora_inicio',
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/medicos/:id/horarios', verificarAdmin, async (req, res) => {
+  try {
+    const { dia_semana, hora_inicio, hora_fin, duracion_min } = req.body;
+
+    if (dia_semana === undefined || !hora_inicio || !hora_fin) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    if (dia_semana < 0 || dia_semana > 6) {
+      return res.status(400).json({ error: 'Día de semana inválido (0-6)' });
+    }
+    if (hora_inicio >= hora_fin) {
+      return res.status(400).json({ error: 'La hora de inicio debe ser menor a la hora fin' });
+    }
+    const duracion = duracion_min || 30;
+    if (duracion < 10 || duracion > 180) {
+      return res.status(400).json({ error: 'Duración debe estar entre 10 y 180 minutos' });
+    }
+
+    const [solapados] = await pool.query(
+      `SELECT id FROM horarios 
+       WHERE medico_id = ? AND dia_semana = ? 
+       AND NOT (hora_fin <= ? OR hora_inicio >= ?)`,
+      [req.params.id, dia_semana, hora_inicio, hora_fin]
+    );
+    if (solapados.length > 0) {
+      return res.status(409).json({ error: 'El horario se solapa con otro existente' });
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO horarios (medico_id, dia_semana, hora_inicio, hora_fin, duracion_min) VALUES (?,?,?,?,?)',
+      [req.params.id, dia_semana, hora_inicio, hora_fin, duracion]
+    );
+    res.json({ mensaje: 'Horario creado', id: result.insertId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/horarios/:id', verificarAdmin, async (req, res) => {
+  try {
+    const { dia_semana, hora_inicio, hora_fin, duracion_min } = req.body;
+
+    if (dia_semana === undefined || !hora_inicio || !hora_fin) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+    if (hora_inicio >= hora_fin) {
+      return res.status(400).json({ error: 'La hora de inicio debe ser menor a la hora fin' });
+    }
+
+    const [actual] = await pool.query('SELECT medico_id FROM horarios WHERE id = ?', [req.params.id]);
+    if (actual.length === 0) return res.status(404).json({ error: 'Horario no encontrado' });
+
+    const [solapados] = await pool.query(
+      `SELECT id FROM horarios 
+       WHERE medico_id = ? AND dia_semana = ? AND id != ?
+       AND NOT (hora_fin <= ? OR hora_inicio >= ?)`,
+      [actual[0].medico_id, dia_semana, req.params.id, hora_inicio, hora_fin]
+    );
+    if (solapados.length > 0) {
+      return res.status(409).json({ error: 'El horario se solapa con otro existente' });
+    }
+
+    await pool.query(
+      'UPDATE horarios SET dia_semana = ?, hora_inicio = ?, hora_fin = ?, duracion_min = ? WHERE id = ?',
+      [dia_semana, hora_inicio, hora_fin, duracion_min || 30, req.params.id]
+    );
+    res.json({ mensaje: 'Horario actualizado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/horarios/:id', verificarAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM horarios WHERE id = ?', [req.params.id]);
+    res.json({ mensaje: 'Horario eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/especialidades', verificarAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM especialidades ORDER BY nombre');

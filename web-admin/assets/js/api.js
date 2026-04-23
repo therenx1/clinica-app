@@ -72,6 +72,33 @@ const api = {
     });
     return res.json();
   },
+  getHorarios: async (medicoId) => {
+    const res = await fetch(`${API_URL}/admin/medicos/${medicoId}/horarios`, { headers: headers() });
+    return res.json();
+  },
+  crearHorario: async (medicoId, data) => {
+    const res = await fetch(`${API_URL}/admin/medicos/${medicoId}/horarios`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  actualizarHorario: async (id, data) => {
+    const res = await fetch(`${API_URL}/admin/horarios/${id}`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  },
+  eliminarHorario: async (id) => {
+    const res = await fetch(`${API_URL}/admin/horarios/${id}`, {
+      method: 'DELETE',
+      headers: headers()
+    });
+    return res.json();
+  },
   getEspecialidades: async () => {
     const res = await fetch(`${API_URL}/admin/especialidades`, { headers: headers() });
     return res.json();

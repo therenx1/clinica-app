@@ -20,6 +20,14 @@
     .avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
     .row-inactivo { opacity: 0.5; }
     .btn-icon { padding: 4px 10px; }
+    .horarios-row { background: #f8fafc; }
+    .horarios-panel { padding: 20px; border-left: 3px solid #0d6efd; margin: 0 20px; }
+    .horario-card { background: white; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border: 1px solid #e5e7eb; }
+    .dia-badge { display: inline-block; padding: 2px 10px; background: #dbeafe; color: #1e40af; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-right: 10px; }
+    .hora-range { font-family: monospace; font-weight: 600; color: #334155; }
+    .duracion-tag { font-size: 0.75rem; color: #64748b; margin-left: 8px; }
+    .expand-btn { cursor: pointer; transition: transform 0.2s; }
+    .expand-btn.open { transform: rotate(90deg); }
   </style>
 </head>
 <body>
@@ -46,7 +54,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
         <h4 class="fw-bold mb-0">Médicos</h4>
-        <p class="text-muted small mb-0">Gestiona el equipo médico</p>
+        <p class="text-muted small mb-0">Gestiona el equipo médico y sus horarios</p>
       </div>
       <button class="btn btn-primary" onclick="abrirModalNuevo()">
         <i class="bi bi-plus-lg me-2"></i>Nuevo médico
@@ -61,6 +69,7 @@
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
+            <th style="width:40px"></th>
             <th>Médico</th>
             <th>Especialidad</th>
             <th>Email</th>
@@ -125,6 +134,58 @@
     </div>
   </div>
 
+  <div class="modal fade" id="modalHorario" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold" id="modalHorarioTitulo">Nuevo horario</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="horarioId">
+          <input type="hidden" id="horarioMedicoId">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Día de la semana</label>
+            <select id="dia_semana" class="form-select">
+              <option value="1">Lunes</option>
+              <option value="2">Martes</option>
+              <option value="3">Miércoles</option>
+              <option value="4">Jueves</option>
+              <option value="5">Viernes</option>
+              <option value="6">Sábado</option>
+              <option value="0">Domingo</option>
+            </select>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Hora inicio</label>
+              <input type="time" id="hora_inicio" class="form-control" value="08:00">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-semibold">Hora fin</label>
+              <input type="time" id="hora_fin" class="form-control" value="13:00">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Duración de cada cita (minutos)</label>
+            <select id="duracion_min" class="form-select">
+              <option value="15">15 minutos</option>
+              <option value="20">20 minutos</option>
+              <option value="30" selected>30 minutos</option>
+              <option value="45">45 minutos</option>
+              <option value="60">60 minutos</option>
+            </select>
+          </div>
+          <div id="horarioError" class="alert alert-danger d-none"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-primary" onclick="guardarHorario()">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="modalConfirmar" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content border-0 rounded-4">
@@ -149,6 +210,7 @@
     if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
 
     let especialidades = [];
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
     async function cargarEspecialidades() {
       especialidades = await api.getEspecialidades();
@@ -169,7 +231,10 @@
         const toggleTitle = m.activo ? 'Desactivar' : 'Activar';
         const toggleClass = m.activo ? 'btn-outline-warning' : 'btn-outline-success';
         return `
-          <tr class="${rowClass}">
+          <tr class="${rowClass}" data-medico-id="${m.id}">
+            <td>
+              <i class="bi bi-chevron-right expand-btn" onclick="toggleHorarios(${m.id})" title="Ver horarios"></i>
+            </td>
             <td>
               <div class="d-flex align-items-center gap-2">
                 <div class="avatar">${avatarContent}</div>
@@ -192,8 +257,121 @@
               </button>
             </td>
           </tr>
+          <tr class="horarios-row d-none" id="horarios-${m.id}">
+            <td colspan="7">
+              <div class="horarios-panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h6 class="fw-bold mb-0"><i class="bi bi-calendar-week me-2"></i>Horarios de atención</h6>
+                  <button class="btn btn-sm btn-primary" onclick="abrirModalHorario(${m.id})">
+                    <i class="bi bi-plus-lg me-1"></i>Agregar horario
+                  </button>
+                </div>
+                <div id="horariosLista-${m.id}">
+                  <div class="text-center text-muted py-3">Cargando...</div>
+                </div>
+              </div>
+            </td>
+          </tr>
         `;
       }).join('');
+    }
+
+    async function toggleHorarios(medicoId) {
+      const fila = document.getElementById(`horarios-${medicoId}`);
+      const btn = document.querySelector(`tr[data-medico-id="${medicoId}"] .expand-btn`);
+      if (fila.classList.contains('d-none')) {
+        fila.classList.remove('d-none');
+        btn.classList.add('open');
+        await renderHorarios(medicoId);
+      } else {
+        fila.classList.add('d-none');
+        btn.classList.remove('open');
+      }
+    }
+
+    async function renderHorarios(medicoId) {
+      const horarios = await api.getHorarios(medicoId);
+      const contenedor = document.getElementById(`horariosLista-${medicoId}`);
+      if (horarios.length === 0) {
+        contenedor.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-calendar-x me-2"></i>Este médico no tiene horarios configurados</div>';
+        return;
+      }
+      contenedor.innerHTML = horarios.map(h => `
+        <div class="horario-card">
+          <div>
+            <span class="dia-badge">${diasSemana[h.dia_semana]}</span>
+            <span class="hora-range">${h.hora_inicio.substring(0,5)} — ${h.hora_fin.substring(0,5)}</span>
+            <span class="duracion-tag">citas de ${h.duracion_min} min</span>
+          </div>
+          <div>
+            <button class="btn btn-sm btn-outline-primary btn-icon me-1" onclick='editarHorario(${JSON.stringify(h)}, ${medicoId})'>
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger btn-icon" onclick="confirmarEliminarHorario(${h.id}, ${medicoId})">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function abrirModalHorario(medicoId) {
+      document.getElementById('modalHorarioTitulo').textContent = 'Nuevo horario';
+      document.getElementById('horarioId').value = '';
+      document.getElementById('horarioMedicoId').value = medicoId;
+      document.getElementById('dia_semana').value = '1';
+      document.getElementById('hora_inicio').value = '08:00';
+      document.getElementById('hora_fin').value = '13:00';
+      document.getElementById('duracion_min').value = '30';
+      document.getElementById('horarioError').classList.add('d-none');
+      new bootstrap.Modal(document.getElementById('modalHorario')).show();
+    }
+
+    function editarHorario(horario, medicoId) {
+      document.getElementById('modalHorarioTitulo').textContent = 'Editar horario';
+      document.getElementById('horarioId').value = horario.id;
+      document.getElementById('horarioMedicoId').value = medicoId;
+      document.getElementById('dia_semana').value = horario.dia_semana;
+      document.getElementById('hora_inicio').value = horario.hora_inicio.substring(0,5);
+      document.getElementById('hora_fin').value = horario.hora_fin.substring(0,5);
+      document.getElementById('duracion_min').value = horario.duracion_min;
+      document.getElementById('horarioError').classList.add('d-none');
+      new bootstrap.Modal(document.getElementById('modalHorario')).show();
+    }
+
+    async function guardarHorario() {
+      const id = document.getElementById('horarioId').value;
+      const medicoId = document.getElementById('horarioMedicoId').value;
+      const data = {
+        dia_semana: parseInt(document.getElementById('dia_semana').value),
+        hora_inicio: document.getElementById('hora_inicio').value,
+        hora_fin: document.getElementById('hora_fin').value,
+        duracion_min: parseInt(document.getElementById('duracion_min').value)
+      };
+      const errorDiv = document.getElementById('horarioError');
+      const resp = id
+        ? await api.actualizarHorario(id, data)
+        : await api.crearHorario(medicoId, data);
+      if (resp.error) {
+        errorDiv.textContent = resp.error;
+        errorDiv.classList.remove('d-none');
+        return;
+      }
+      bootstrap.Modal.getInstance(document.getElementById('modalHorario')).hide();
+      renderHorarios(medicoId);
+    }
+
+    function confirmarEliminarHorario(id, medicoId) {
+      document.getElementById('confirmarTitulo').textContent = 'Eliminar horario';
+      document.getElementById('confirmarMensaje').innerHTML = '¿Eliminar este horario?<br><small class="text-muted">Las citas ya agendadas en este horario no se verán afectadas.</small>';
+      const btn = document.getElementById('btnConfirmar');
+      const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
+      btn.onclick = async () => {
+        await api.eliminarHorario(id);
+        modal.hide();
+        renderHorarios(medicoId);
+      };
+      modal.show();
     }
 
     function previsualizar(event) {

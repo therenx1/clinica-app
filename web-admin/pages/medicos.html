@@ -14,7 +14,12 @@
     .sidebar .nav-link:hover, .sidebar .nav-link.active { background: #334155; color: #fff; }
     .main { margin-left: 250px; padding: 32px; }
     .card { border: none; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-    .avatar { width: 40px; height: 40px; border-radius: 50%; background: #0d6efd; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; }
+    .avatar { width: 44px; height: 44px; border-radius: 50%; background: #0d6efd; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; overflow: hidden; }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .avatar-preview { width: 100px; height: 100px; border-radius: 50%; background: #e9ecef; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; overflow: hidden; border: 2px dashed #ced4da; }
+    .avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .row-inactivo { opacity: 0.5; }
+    .btn-icon { padding: 4px 10px; }
   </style>
 </head>
 <body>
@@ -43,12 +48,16 @@
         <h4 class="fw-bold mb-0">Médicos</h4>
         <p class="text-muted small mb-0">Gestiona el equipo médico</p>
       </div>
-      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalMedico">
+      <button class="btn btn-primary" onclick="abrirModalNuevo()">
         <i class="bi bi-plus-lg me-2"></i>Nuevo médico
       </button>
     </div>
 
     <div class="card p-4">
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" id="mostrarInactivos" onchange="cargarMedicos()">
+        <label class="form-check-label" for="mostrarInactivos">Mostrar médicos inactivos</label>
+      </div>
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
@@ -57,6 +66,7 @@
             <th>Email</th>
             <th>Teléfono</th>
             <th>Estado</th>
+            <th class="text-end">Acciones</th>
           </tr>
         </thead>
         <tbody id="tablaMedicos"></tbody>
@@ -68,10 +78,21 @@
     <div class="modal-dialog">
       <div class="modal-content border-0 rounded-4">
         <div class="modal-header border-0">
-          <h5 class="modal-title fw-bold">Nuevo médico</h5>
+          <h5 class="modal-title fw-bold" id="modalTitulo">Nuevo médico</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+          <div class="avatar-preview" id="preview">
+            <i class="bi bi-person text-muted fs-1"></i>
+          </div>
+          <div class="mb-3 text-center">
+            <label class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-camera me-2"></i>Seleccionar foto
+              <input type="file" id="foto" accept="image/jpeg,image/png,image/webp" class="d-none" onchange="previsualizar(event)">
+            </label>
+            <div class="form-text">JPG, PNG o WEBP · máx 5MB</div>
+          </div>
+          <input type="hidden" id="medicoId">
           <div class="mb-3">
             <label class="form-label fw-semibold">Nombre</label>
             <input type="text" id="nombre" class="form-control" placeholder="Nombre">
@@ -90,18 +111,33 @@
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Especialidad</label>
-            <select id="especialidad_id" class="form-select">
-              <option value="1">Medicina General</option>
-              <option value="2">Cardiología</option>
-              <option value="3">Pediatría</option>
-              <option value="4">Dermatología</option>
-              <option value="5">Traumatología</option>
-            </select>
+            <select id="especialidad_id" class="form-select"></select>
           </div>
         </div>
         <div class="modal-footer border-0">
           <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button class="btn btn-primary" onclick="crearMedico()">Guardar</button>
+          <button class="btn btn-primary" id="btnGuardar" onclick="guardarMedico()">
+            <span id="btnGuardarTexto">Guardar</span>
+            <span class="spinner-border spinner-border-sm d-none" id="btnGuardarSpinner"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalConfirmar" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content border-0 rounded-4">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold" id="confirmarTitulo">Confirmar</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="confirmarMensaje"></p>
+        </div>
+        <div class="modal-footer border-0">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button class="btn btn-danger" id="btnConfirmar">Confirmar</button>
         </div>
       </div>
     </div>
@@ -112,36 +148,141 @@
   <script>
     if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
 
-    async function cargarMedicos() {
-      const medicos = await api.getMedicos();
-      const tbody = document.getElementById('tablaMedicos');
-      tbody.innerHTML = medicos.map(m => `
-        <tr>
-          <td>
-            <div class="d-flex align-items-center gap-2">
-              <div class="avatar">${m.nombre[0]}${m.apellido[0]}</div>
-              <span>Dr. ${m.nombre} ${m.apellido}</span>
-            </div>
-          </td>
-          <td>${m.especialidad}</td>
-          <td>${m.email || '—'}</td>
-          <td>${m.telefono || '—'}</td>
-          <td><span class="badge ${m.activo ? 'bg-success' : 'bg-secondary'}">${m.activo ? 'Activo' : 'Inactivo'}</span></td>
-        </tr>
-      `).join('');
+    let especialidades = [];
+
+    async function cargarEspecialidades() {
+      especialidades = await api.getEspecialidades();
+      const select = document.getElementById('especialidad_id');
+      select.innerHTML = especialidades.map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
     }
 
-    async function crearMedico() {
-      const data = {
-        nombre: document.getElementById('nombre').value,
-        apellido: document.getElementById('apellido').value,
-        email: document.getElementById('email').value,
-        telefono: document.getElementById('telefono').value,
-        especialidad_id: parseInt(document.getElementById('especialidad_id').value)
-      };
-      await api.crearMedico(data);
-      bootstrap.Modal.getInstance(document.getElementById('modalMedico')).hide();
+    async function cargarMedicos() {
+      const incluirInactivos = document.getElementById('mostrarInactivos').checked;
+      const medicos = await api.getMedicos(incluirInactivos);
+      const tbody = document.getElementById('tablaMedicos');
+      tbody.innerHTML = medicos.map(m => {
+        const avatarContent = m.foto_url
+          ? `<img src="${m.foto_url}" alt="${m.nombre}">`
+          : `${m.nombre[0]}${m.apellido[0]}`;
+        const rowClass = m.activo ? '' : 'row-inactivo';
+        const toggleIcon = m.activo ? 'bi-pause-circle' : 'bi-play-circle';
+        const toggleTitle = m.activo ? 'Desactivar' : 'Activar';
+        const toggleClass = m.activo ? 'btn-outline-warning' : 'btn-outline-success';
+        return `
+          <tr class="${rowClass}">
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <div class="avatar">${avatarContent}</div>
+                <span>Dr. ${m.nombre} ${m.apellido}</span>
+              </div>
+            </td>
+            <td>${m.especialidad}</td>
+            <td>${m.email || '—'}</td>
+            <td>${m.telefono || '—'}</td>
+            <td><span class="badge ${m.activo ? 'bg-success' : 'bg-secondary'}">${m.activo ? 'Activo' : 'Inactivo'}</span></td>
+            <td class="text-end">
+              <button class="btn btn-sm btn-outline-primary btn-icon" onclick="editarMedico(${m.id})" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm ${toggleClass} btn-icon" onclick="toggleEstado(${m.id}, ${!m.activo})" title="${toggleTitle}">
+                <i class="bi ${toggleIcon}"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger btn-icon" onclick="eliminarMedico(${m.id}, '${m.nombre} ${m.apellido}')" title="Eliminar">
+                <i class="bi bi-trash"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function previsualizar(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const preview = document.getElementById('preview');
+      const url = URL.createObjectURL(file);
+      preview.innerHTML = `<img src="${url}" alt="Preview">`;
+    }
+
+    function abrirModalNuevo() {
+      document.getElementById('modalTitulo').textContent = 'Nuevo médico';
+      document.getElementById('medicoId').value = '';
+      document.getElementById('nombre').value = '';
+      document.getElementById('apellido').value = '';
+      document.getElementById('email').value = '';
+      document.getElementById('telefono').value = '';
+      document.getElementById('foto').value = '';
+      document.getElementById('preview').innerHTML = '<i class="bi bi-person text-muted fs-1"></i>';
+      new bootstrap.Modal(document.getElementById('modalMedico')).show();
+    }
+
+    async function editarMedico(id) {
+      const m = await api.getMedico(id);
+      document.getElementById('modalTitulo').textContent = 'Editar médico';
+      document.getElementById('medicoId').value = m.id;
+      document.getElementById('nombre').value = m.nombre;
+      document.getElementById('apellido').value = m.apellido;
+      document.getElementById('email').value = m.email || '';
+      document.getElementById('telefono').value = m.telefono || '';
+      document.getElementById('especialidad_id').value = m.especialidad_id;
+      document.getElementById('foto').value = '';
+      const preview = document.getElementById('preview');
+      preview.innerHTML = m.foto_url
+        ? `<img src="${m.foto_url}" alt="Foto">`
+        : '<i class="bi bi-person text-muted fs-1"></i>';
+      new bootstrap.Modal(document.getElementById('modalMedico')).show();
+    }
+
+    async function guardarMedico() {
+      const id = document.getElementById('medicoId').value;
+      const fd = new FormData();
+      fd.append('nombre', document.getElementById('nombre').value);
+      fd.append('apellido', document.getElementById('apellido').value);
+      fd.append('email', document.getElementById('email').value);
+      fd.append('telefono', document.getElementById('telefono').value);
+      fd.append('especialidad_id', document.getElementById('especialidad_id').value);
+      const foto = document.getElementById('foto').files[0];
+      if (foto) fd.append('foto', foto);
+
+      document.getElementById('btnGuardarTexto').classList.add('d-none');
+      document.getElementById('btnGuardarSpinner').classList.remove('d-none');
+
+      try {
+        const resp = id ? await api.actualizarMedico(id, fd) : await api.crearMedico(fd);
+        if (resp.error) {
+          alert('Error: ' + resp.error);
+        } else {
+          bootstrap.Modal.getInstance(document.getElementById('modalMedico')).hide();
+          cargarMedicos();
+        }
+      } finally {
+        document.getElementById('btnGuardarTexto').classList.remove('d-none');
+        document.getElementById('btnGuardarSpinner').classList.add('d-none');
+      }
+    }
+
+    async function toggleEstado(id, nuevoEstado) {
+      await api.cambiarEstadoMedico(id, nuevoEstado);
       cargarMedicos();
+    }
+
+    function eliminarMedico(id, nombre) {
+      document.getElementById('confirmarTitulo').textContent = 'Eliminar médico';
+      document.getElementById('confirmarMensaje').innerHTML = `¿Eliminar permanentemente a <strong>Dr. ${nombre}</strong>?<br><small class="text-muted">Esta acción no se puede deshacer. Si el médico tiene citas, se recomienda desactivarlo en lugar de eliminar.</small>`;
+      const btn = document.getElementById('btnConfirmar');
+      const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
+      btn.onclick = async () => {
+        const resp = await api.eliminarMedico(id);
+        modal.hide();
+        if (resp.tieneCitas) {
+          alert(`No se puede eliminar: tiene ${resp.totalCitas} cita(s) registrada(s). Desactívalo en su lugar.`);
+        } else if (resp.error) {
+          alert('Error: ' + resp.error);
+        } else {
+          cargarMedicos();
+        }
+      };
+      modal.show();
     }
 
     function logout() {
@@ -150,6 +291,7 @@
       window.location.href = '../login.html';
     }
 
+    cargarEspecialidades();
     cargarMedicos();
   </script>
 </body>

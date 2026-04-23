@@ -7,6 +7,10 @@ const headers = () => ({
   'Authorization': `Bearer ${getToken()}`
 });
 
+const headersFormData = () => ({
+  'Authorization': `Bearer ${getToken()}`
+});
+
 const api = {
   login: async (email, password) => {
     const res = await fetch(`${API_URL}/admin/login`, {
@@ -28,16 +32,48 @@ const api = {
     });
     return res.json();
   },
-  getMedicos: async () => {
-    const res = await fetch(`${API_URL}/admin/medicos`, { headers: headers() });
+  getMedicos: async (incluirInactivos = false) => {
+    const url = `${API_URL}/admin/medicos${incluirInactivos ? '?incluir_inactivos=true' : ''}`;
+    const res = await fetch(url, { headers: headers() });
     return res.json();
   },
-  crearMedico: async (data) => {
+  getMedico: async (id) => {
+    const res = await fetch(`${API_URL}/admin/medicos/${id}`, { headers: headers() });
+    return res.json();
+  },
+  crearMedico: async (formData) => {
     const res = await fetch(`${API_URL}/admin/medicos`, {
       method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(data)
+      headers: headersFormData(),
+      body: formData
     });
+    return res.json();
+  },
+  actualizarMedico: async (id, formData) => {
+    const res = await fetch(`${API_URL}/admin/medicos/${id}`, {
+      method: 'PUT',
+      headers: headersFormData(),
+      body: formData
+    });
+    return res.json();
+  },
+  cambiarEstadoMedico: async (id, activo) => {
+    const res = await fetch(`${API_URL}/admin/medicos/${id}/estado`, {
+      method: 'PATCH',
+      headers: headers(),
+      body: JSON.stringify({ activo })
+    });
+    return res.json();
+  },
+  eliminarMedico: async (id) => {
+    const res = await fetch(`${API_URL}/admin/medicos/${id}`, {
+      method: 'DELETE',
+      headers: headers()
+    });
+    return res.json();
+  },
+  getEspecialidades: async () => {
+    const res = await fetch(`${API_URL}/admin/especialidades`, { headers: headers() });
     return res.json();
   },
   getPacientes: async () => {

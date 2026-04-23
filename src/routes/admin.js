@@ -3,6 +3,19 @@ const router = express.Router();
 const pool = require('../db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const { subirFotoMedico, eliminarFoto } = require('../spaces');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      return cb(new Error('Formato no permitido. Usa JPG, PNG o WEBP'));
+    }
+    cb(null, true);
+  }
+});
 
 const verificarAdmin = (req, res, next) => {
   const token = req.headers['authorization']?.split(' ')[1];
@@ -76,10 +89,14 @@ router.get('/pacientes', verificarAdmin, async (req, res) => {
 
 router.get('/medicos', verificarAdmin, async (req, res) => {
   try {
+    const { incluir_inactivos } = req.query;
+    const whereClause = incluir_inactivos === 'true' ? '' : 'WHERE m.activo = 1';
     const [rows] = await pool.query(`
       SELECT m.*, e.nombre AS especialidad
       FROM medicos m
       JOIN especialidades e ON m.especialidad_id = e.id
+      ${whereClause}
+      ORDER BY m.activo DESC, m.nombre ASC
     `);
     res.json(rows);
   } catch (error) {
@@ -87,14 +104,106 @@ router.get('/medicos', verificarAdmin, async (req, res) => {
   }
 });
 
-router.post('/medicos', verificarAdmin, async (req, res) => {
+router.get('/medicos/:id', verificarAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT m.*, e.nombre AS especialidad
+      FROM medicos m
+      JOIN especialidades e ON m.especialidad_id = e.id
+      WHERE m.id = ?
+    `, [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Médico no encontrado' });
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/medicos', verificarAdmin, upload.single('foto'), async (req, res) => {
   try {
     const { especialidad_id, nombre, apellido, email, telefono } = req.body;
+    if (!especialidad_id || !nombre || !apellido) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    let foto_url = null;
+    if (req.file) {
+      foto_url = await subirFotoMedico(req.file.buffer, req.file.mimetype);
+    }
+
     const [result] = await pool.query(
-      'INSERT INTO medicos (especialidad_id, nombre, apellido, email, telefono) VALUES (?,?,?,?,?)',
-      [especialidad_id, nombre, apellido, email, telefono]
+      'INSERT INTO medicos (especialidad_id, nombre, apellido, email, telefono, foto_url) VALUES (?,?,?,?,?,?)',
+      [especialidad_id, nombre, apellido, email || null, telefono || null, foto_url]
     );
-    res.json({ mensaje: 'Médico creado', id: result.insertId });
+    res.json({ mensaje: 'Médico creado', id: result.insertId, foto_url });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/medicos/:id', verificarAdmin, upload.single('foto'), async (req, res) => {
+  try {
+    const { especialidad_id, nombre, apellido, email, telefono } = req.body;
+
+    const [actual] = await pool.query('SELECT foto_url FROM medicos WHERE id = ?', [req.params.id]);
+    if (actual.length === 0) return res.status(404).json({ error: 'Médico no encontrado' });
+
+    let foto_url = actual[0].foto_url;
+    if (req.file) {
+      foto_url = await subirFotoMedico(req.file.buffer, req.file.mimetype);
+      if (actual[0].foto_url) await eliminarFoto(actual[0].foto_url);
+    }
+
+    await pool.query(
+      'UPDATE medicos SET especialidad_id = ?, nombre = ?, apellido = ?, email = ?, telefono = ?, foto_url = ? WHERE id = ?',
+      [especialidad_id, nombre, apellido, email || null, telefono || null, foto_url, req.params.id]
+    );
+    res.json({ mensaje: 'Médico actualizado', foto_url });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/medicos/:id/estado', verificarAdmin, async (req, res) => {
+  try {
+    const { activo } = req.body;
+    if (typeof activo !== 'boolean' && activo !== 0 && activo !== 1) {
+      return res.status(400).json({ error: 'Valor de activo inválido' });
+    }
+    await pool.query('UPDATE medicos SET activo = ? WHERE id = ?', [activo ? 1 : 0, req.params.id]);
+    res.json({ mensaje: `Médico ${activo ? 'activado' : 'desactivado'}` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/medicos/:id', verificarAdmin, async (req, res) => {
+  try {
+    const [[citas]] = await pool.query('SELECT COUNT(*) AS total FROM citas WHERE medico_id = ?', [req.params.id]);
+    if (citas.total > 0) {
+      return res.status(409).json({
+        error: 'No se puede eliminar: el médico tiene citas registradas',
+        tieneCitas: true,
+        totalCitas: citas.total
+      });
+    }
+
+    const [medico] = await pool.query('SELECT foto_url FROM medicos WHERE id = ?', [req.params.id]);
+    if (medico.length === 0) return res.status(404).json({ error: 'Médico no encontrado' });
+
+    await pool.query('DELETE FROM medicos WHERE id = ?', [req.params.id]);
+    if (medico[0].foto_url) await eliminarFoto(medico[0].foto_url);
+
+    res.json({ mensaje: 'Médico eliminado permanentemente' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/especialidades', verificarAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM especialidades ORDER BY nombre');
+    res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

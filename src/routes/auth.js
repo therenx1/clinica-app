@@ -20,8 +20,8 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'El DNI debe tener exactamente 8 dígitos' });
     }
 
-    if (tipo_documento === 'CE' && !/^[A-Za-z0-9]{1,12}$/.test(dni)) {
-      return res.status(400).json({ error: 'El CE debe ser alfanumérico de hasta 12 caracteres' });
+    if (tipo_documento === 'CE' && !/^\d{9}$/.test(dni)) {
+      return res.status(400).json({ error: 'El CE debe tener exactamente 9 dígitos' });
     }
 
     const hash = await bcrypt.hash(password, 10);

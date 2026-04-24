@@ -1,12 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const medicosRoutes = require('./routes/medicos');
 const citasRoutes = require('./routes/citas');
 const adminRoutes = require('./routes/admin');
+const especialidadesRoutes = require('./routes/especialidades');
 
 const app = express();
 
@@ -19,6 +21,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/medicos', medicosRoutes);
 app.use('/api/citas', citasRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/especialidades', especialidadesRoutes);
 
 app.get('/', (req, res) => {
   res.json({ mensaje: 'API Clínica funcionando' });

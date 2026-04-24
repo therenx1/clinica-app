@@ -19,9 +19,7 @@ async function subirFotoMedico(buffer, mimetype) {
     .resize(400, 400, { fit: 'cover' })
     .jpeg({ quality: 85 })
     .toBuffer();
-
   const nombre = `medicos/${crypto.randomBytes(16).toString('hex')}.jpg`;
-
   await s3.send(new PutObjectCommand({
     Bucket: BUCKET,
     Key: nombre,
@@ -29,7 +27,22 @@ async function subirFotoMedico(buffer, mimetype) {
     ContentType: 'image/jpeg',
     ACL: 'public-read'
   }));
+  return `${CDN}/${nombre}`;
+}
 
+async function subirFotoUsuario(buffer, mimetype) {
+  const procesada = await sharp(buffer)
+    .resize(400, 400, { fit: 'cover' })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  const nombre = `usuarios/${crypto.randomBytes(16).toString('hex')}.jpg`;
+  await s3.send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: nombre,
+    Body: procesada,
+    ContentType: 'image/jpeg',
+    ACL: 'public-read'
+  }));
   return `${CDN}/${nombre}`;
 }
 
@@ -43,4 +56,4 @@ async function eliminarFoto(url) {
   }
 }
 
-module.exports = { subirFotoMedico, eliminarFoto };
+module.exports = { subirFotoMedico, subirFotoUsuario, eliminarFoto };

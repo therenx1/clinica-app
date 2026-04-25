@@ -97,6 +97,7 @@ router.get('/citas', verificarAdmin, async (req, res) => {
       `SELECT c.*,
         u.dni AS paciente_dni, u.tipo_documento AS paciente_tipo_doc,
         u.nombre AS paciente_nombre, u.apellido AS paciente_apellido,
+        u.foto_url AS paciente_foto_url,
         m.nombre AS medico_nombre, m.apellido AS medico_apellido,
         e.nombre AS especialidad
       FROM citas c
@@ -168,7 +169,7 @@ router.get('/pacientes', verificarAdmin, async (req, res) => {
     );
 
     const [rows] = await pool.query(
-      `SELECT id, nombre, apellido, email, telefono, dni, tipo_documento, created_at 
+      `SELECT id, nombre, apellido, email, telefono, dni, tipo_documento, foto_url, created_at 
        FROM usuarios 
        ${whereClause} 
        ORDER BY created_at DESC

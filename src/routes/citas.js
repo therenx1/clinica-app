@@ -17,16 +17,39 @@ const verificarToken = (req, res, next) => {
 router.post('/', verificarToken, async (req, res) => {
   try {
     const { medico_id, fecha, hora, motivo } = req.body;
+
+    if (!medico_id || !fecha || !hora) {
+      return res.status(400).json({ error: 'Faltan datos requeridos' });
+    }
+
+    const [ocupadas] = await pool.query(
+      `SELECT id FROM citas 
+       WHERE medico_id = ? 
+       AND fecha = ? 
+       AND hora = ? 
+       AND estado != 'cancelada'`,
+      [medico_id, fecha, hora]
+    );
+
+    if (ocupadas.length > 0) {
+      return res.status(409).json({ 
+        error: 'Este horario ya está ocupado. Por favor elige otra hora.' 
+      });
+    }
+
     const [result] = await pool.query(
       'INSERT INTO citas (usuario_id, medico_id, fecha, hora, motivo) VALUES (?,?,?,?,?)',
       [req.usuario.id, medico_id, fecha, hora, motivo]
     );
+    
     await pool.query(
       'INSERT INTO notificaciones (usuario_id, cita_id, mensaje) VALUES (?,?,?)',
       [req.usuario.id, result.insertId, `Tu cita fue agendada para el ${fecha} a las ${hora}`]
     );
+    
     res.json({ mensaje: 'Cita agendada', id: result.insertId });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 });

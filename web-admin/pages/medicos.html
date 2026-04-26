@@ -210,6 +210,34 @@
 <script>
   if (!localStorage.getItem('adminToken')) window.location.href = '../login.html';
 
+  const NOMBRES_FEMENINOS = new Set([
+    'maria', 'lucia', 'ana', 'sofia', 'carmen', 'rosa', 'patricia',
+    'laura', 'andrea', 'diana', 'elena', 'isabel', 'gabriela', 'valentina',
+    'camila', 'fernanda', 'alejandra', 'claudia', 'monica', 'paula',
+    'natalia', 'veronica', 'daniela', 'cristina', 'beatriz', 'lorena',
+    'raquel', 'silvia', 'mariana', 'julia', 'victoria', 'adriana',
+    'leticia', 'pilar', 'teresa', 'francisca', 'esther', 'irene',
+    'mercedes', 'carolina', 'angelica', 'yolanda', 'gloria', 'luisa',
+    'olga', 'marta', 'sara', 'alicia', 'barbara', 'cecilia', 'elsa',
+    'emma', 'eva', 'ines', 'josefa', 'juana', 'lidia', 'lola',
+    'luz', 'manuela', 'margarita', 'nuria', 'rocio', 'soledad',
+    'susana', 'vanessa', 'wendy', 'yesenia', 'milagros', 'doris'
+  ]);
+
+  function tituloMedico(nombre, apellido) {
+    const nombreLimpio = (nombre || '').trim();
+    const apellidoLimpio = (apellido || '').trim();
+    const nombreCompleto = `${nombreLimpio} ${apellidoLimpio}`.trim();
+    if (!nombreCompleto) return 'Médico';
+    const primerNombre = nombreLimpio
+      .split(' ')[0]
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const prefijo = NOMBRES_FEMENINOS.has(primerNombre) ? 'Dra.' : 'Dr.';
+    return `${prefijo} ${nombreCompleto}`;
+  }
+
   let especialidades = [];
   const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -241,6 +269,7 @@
         const toggleIcon = m.activo ? 'bi-pause-circle' : 'bi-play-circle';
         const toggleTitle = m.activo ? 'Desactivar' : 'Activar';
         const toggleClass = m.activo ? 'btn-outline-warning' : 'btn-outline-success';
+        const nombreFormateado = tituloMedico(m.nombre, m.apellido);
         return `
           <tr class="${rowClass}" data-medico-id="${m.id}">
             <td>
@@ -249,7 +278,7 @@
             <td>
               <div class="d-flex align-items-center gap-2">
                 <div class="avatar">${avatarContent}</div>
-                <span>Dr. ${m.nombre} ${m.apellido}</span>
+                <span>${nombreFormateado}</span>
               </div>
             </td>
             <td>${m.especialidad}</td>
@@ -263,7 +292,7 @@
               <button class="btn btn-sm ${toggleClass} btn-icon" onclick="toggleEstado(${m.id}, ${!m.activo}, this)" title="${toggleTitle}">
                 <i class="bi ${toggleIcon}"></i>
               </button>
-              <button class="btn btn-sm btn-outline-danger btn-icon" onclick="eliminarMedico(${m.id}, '${m.nombre} ${m.apellido}')" title="Eliminar">
+              <button class="btn btn-sm btn-outline-danger btn-icon" onclick="eliminarMedico(${m.id}, '${m.nombre}', '${m.apellido}')" title="Eliminar">
                 <i class="bi bi-trash"></i>
               </button>
             </td>
@@ -484,9 +513,9 @@
     }
   }
 
-  function eliminarMedico(id, nombre) {
+  function eliminarMedico(id, nombre, apellido) {
     document.getElementById('confirmarTitulo').textContent = 'Eliminar médico';
-    document.getElementById('confirmarMensaje').innerHTML = `¿Eliminar permanentemente a <strong>Dr. ${nombre}</strong>?<br><small class="text-muted">Esta acción no se puede deshacer. Si el médico tiene citas, se recomienda desactivarlo en lugar de eliminar.</small>`;
+    document.getElementById('confirmarMensaje').innerHTML = `¿Eliminar permanentemente a <strong>${tituloMedico(nombre, apellido)}</strong>?<br><small class="text-muted">Esta acción no se puede deshacer. Si el médico tiene citas, se recomienda desactivarlo en lugar de eliminar.</small>`;
     const btn = document.getElementById('btnConfirmar');
     const modal = new bootstrap.Modal(document.getElementById('modalConfirmar'));
     btn.onclick = async () => {
